@@ -113,6 +113,8 @@ at 3 s, a breakdown (pads only) on the result (22–24 s), the beat back for the
 The effects come from omnigami's own kit; `scripts/sounds/kit.json` says what
 each one is for. Name them in `cues()` and use them as they are. Mastered around −14 LUFS.
 
+The score's sound is `music.style`: here `'organic'` (plucked strings, a marimba, a shaker), as the reference's plants or botanicals brand has it. For the user's product, pick by what it is: `'organic'` for plants, food and drink, and other natural or handmade things; `'synth'` (oscillators, the default) for software and tools; `'felt'` (a sparse felt piano over a sub bass and a light kit) for a quiet, minimal film. In a break (`music.breaks`) the drums, bass and lead stop and the chords play on; the film's name seeds the key (always major), the progressions and the patterns.
+
 ## Banned
 
 Crossfades; blur-ins; brightness "developing" (a screen never fades to black or wakes up: pages push and slide); cuts; 3D flips; particles; glows
