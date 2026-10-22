@@ -12,7 +12,8 @@ its real shop, captured, and its own can renders and photographs.
 - **One continuous take.** Every scene is made out of the one before it. Nothing fades, blurs in or cuts. Objects change shape instead: text rises out of a mask line, icons and letters pop from zero on a spring, bars fill, pages push, a black shape floods the whole frame and contracts into the next scene.
 - **A cursor drives every change:** clicks, a drag, a scroll. Only loaders, counters and the popping glass letters move by themselves.
 - **A screen-studio camera.** It zooms so each moment fills the frame (1.0 to 3.1), and the cursor scales with it (by the square root of the zoom, capped at 1.6).
-- **Something on every beat:** 120 BPM, a beat every 0.5 s, 54 beats, 27 s. The zoom into the first screen lands on the drop (6.0 s); the result sits in the breakdown (22–24 s); the wordmark comes back with the beat. The last frame is the first.
+- **Something on every beat:** 120 BPM, a beat every 0.5 s, 62 beats, 31 s. The zoom into the first screen lands on the drop (6.0 s); the result sits in the breakdown (26–28 s); the wordmark comes back with the beat. The last frame is the first.
+- **Room before the presses that follow big moves.** The take keeps the reference's brisk pace, with no pauses for their own sake: the screens are UI, with no lines to read. The room goes where a big move has just changed the screen and a press follows, so the eye lands and finds the button first: a bar before Checkout once the box has filled, and a bar before "Start my box" once the checkout page has pushed in and scrolled. A hold there is simply still.
 - **Warm off-white canvas** (Fennick: `#F1EBE0`), a little lighter above centre. Black UI with white labels. The product's screens and photographs bring the colour (Fennick: yuzu `#F7CC33`, hibiscus `#DB3863`, pear `#8CC261`, ink `#1D1A16`).
 - **Two faces:** the product's heavy display face for the wordmark and the glass word (Fennick: Bricolage Grotesque 800, a little condensed); its text face for everything else (DM Sans).
 - **Glass** only over the product's own screens: a smoky ink tint, a white veil, a bright 2.5 px rim (the toolbar and slider darker, so the page under them stays quiet). Never over the off-white canvas.
@@ -37,7 +38,7 @@ film holds the numbers (`squareLayout()`, `shapeLayout()`):
 | the main screen (a capture) | the box panel, 800 × 800 CSS px of the desktop page | the desktop page under its header, 1440 × 810 | the phone page under its header, 390 × 693 |
 | glass word: fits, at most | 700, 170 | 900, 200 | 700, 170 |
 | toolbar and slider (centre); camera | 720, 1250; 1.3 then 1.15 | 1129, 1150; 1.08 then 1.03 | 720, 2260; 1.08 then 1.05 (inside the page's side margins) |
-| phone (its screen; an unbranded photograph around it) | 86% of the frame's height | 86% of the frame's height | 84% of the frame's height; the pages fill the frame until the pull-back (15.95) |
+| phone (its screen; an unbranded photograph around it) | 86% of the frame's height | 86% of the frame's height | 84% of the frame's height; the pages fill the frame until the pull-back (19.95) |
 
 The main screen's tile in the bento has the frame's own shape, so the zoom into it
 lands exactly on its edges in every shape; in wide and tall it grows a beat
@@ -63,14 +64,14 @@ past the edge of a screen, and no zoom cuts through a word.
 | 7.10 | Toolbar | the word melts into a droplet that stretches into a 4-icon glass toolbar; camera 1.3 | the screen's own actions |
 | 8.30 | Slider | click the last icon: the toolbar becomes a slider panel; drag it end to end (8.65–9.75); the screen steps through its real states as it moves | one action that visibly changes the screen (Fennick: the box fills, 0 to 12 cans) |
 | 9.70 | Done | the slider's action completes: the summary row's words leave upward, "Box ready" rises in, the Checkout button opens leftward from its right end | the state that lets the flow go on |
-| 11.45 | Flow | click Checkout: the checkout page pushes in (11.5), holds, scrolls to "Start my box" (12.75–13.75); click it (14.25): its label leaves and a spinner rises; the order page pushes in (14.6) and holds | the product's own next pages, in order |
-| 15.95 | Phone | the screen pulls back into the phone (an unbranded photograph); a status bar appears above the page | the product's mobile page, or skip to the lock screen |
-| 17.00 | Lock screen | the lock screen slides down over the page: the owner's wallpaper, Thursday's date and time; the first notification grows out of a bar (17.65) | something arriving |
-| 18.80 | Days pass | the date and the time roll on, digit by digit, to Saturday; the second notification arrives above the first (19.3) | skip when the result is immediate |
-| 20.85 | Dot | tap the notification: it becomes a black dot (20.9), a check draws on (21.25), two ripples (21.45) | the product's flow, done |
-| 21.72 | Flood | the dot floods the frame (0.2 s, past the corners), holds black | same |
-| 22.45 | Result | an iris opens onto the real result, full frame, with a slow push in (Fennick: the box on the kitchen counter, a render) | what the customer actually gets |
-| 23.95 | Close | the round aperture closes to black; the black contracts in one move straight into the period (24.55–25.35, its size eased in log space), the letters rise back through their line, nearest the period first (25.35), the tagline rises (25.9) | same |
+| 13.45 | Flow | click Checkout: the checkout page pushes in (13.5), holds, scrolls to "Start my box" (15.25–16.25); click it (18.25): its label leaves and a spinner rises; the order page pushes in (18.6) and holds | the product's own next pages, in order |
+| 19.95 | Phone | the screen pulls back into the phone (an unbranded photograph); a status bar appears above the page | the product's mobile page, or skip to the lock screen |
+| 21.00 | Lock screen | the lock screen slides down over the page: the owner's wallpaper, Thursday's date and time; the first notification grows out of a bar (21.65) | something arriving |
+| 22.80 | Days pass | the date and the time roll on, digit by digit, to Saturday; the second notification arrives above the first (23.3) | skip when the result is immediate |
+| 24.85 | Dot | tap the notification: it becomes a black dot (24.9), a check draws on (25.25), two ripples (25.45) | the product's flow, done |
+| 25.72 | Flood | the dot floods the frame (0.2 s, past the corners), holds black | same |
+| 26.45 | Result | an iris opens onto the real result, full frame, with a slow push in (Fennick: the box on the kitchen counter, a render) | what the customer actually gets |
+| 27.95 | Close | the round aperture closes to black; the black contracts in one move straight into the period (28.55–29.35, its size eased in log space), the letters rise back through their line, nearest the period first (29.35), the tagline rises (29.9) | same |
 
 ## Motion
 
@@ -109,7 +110,7 @@ letter and digit, a soft `swish` on the big moves (each with its `motion`: a
 shape changing is a `container`, the frame moving is a `camera`), a `tick` as
 each can lands in the box, every cue on the visual onset of its move. No
 impacts, risers or chimes. A 120 BPM bed in D major: a quiet start, the beat in
-at 3 s, a breakdown (pads only) on the result (22–24 s), the beat back for the close.
+at 3 s, a breakdown (pads only) on the result (26–28 s), the beat back for the close.
 The effects come from omnigami's own kit; `scripts/sounds/kit.json` says what
 each one is for. Name them in `cues()` and use them as they are. Mastered around −14 LUFS.
 

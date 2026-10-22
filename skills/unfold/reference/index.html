@@ -18,7 +18,13 @@
 // renders and photographs. Square, wide and tall: one design, laid out for each frame.
 (() => {
   const { clamp, lerp, spring, track, loadFont, loadImage, measure, roundRect, drawCover, easeOutExpo, easeInOutCubic, rng } = window.kit;
-  const W = 1440, H = 1440, CX = 720, CY = 720, FPS = 60, DURATION = 27;
+  const W = 1440, H = 1440, CX = 720, CY = 720, FPS = 60, DURATION = 31;
+  // Room before the two presses that follow big moves: once the box has filled, the eye finds "Box ready" and
+  // Checkout before the cursor sets off; once the checkout page has pushed in and scrolled, it finds "Start my box"
+  // before the press. Everything from p on happens d later; a move already under way at p finishes in its own time.
+  // T(x): an original time, in this film's time. One bar each, so the take stays on the music's grid.
+  const INSERTS = [[10.4, 1.5], [10.97, 0.5], [12.7, 0.5], [13.97, 1.5]];
+  const T = (x) => x + INSERTS.reduce((a, [p, d]) => a + (x >= p ? d : 0), 0);
   const canvas = document.getElementById('c');
   const g = canvas.getContext('2d', { willReadFrequently: true });
   const helper = (w, h) => { const c = document.createElement('canvas'); c.width = w; c.height = h; return [c, c.getContext('2d', { willReadFrequently: true })]; };
@@ -90,8 +96,8 @@
     c.restore();
     c.beginPath(); c.arc(L.dotCx, L.dotCy, L.dotD / 2, 0, Math.PI * 2); c.fill();
   }
-  const wordOut = (t) => (i) => inCubic(clamp((t - 0.5 - i * 0.03) / 0.2));
-  const wordIn = (t) => (i, n) => 1 - easeOutExpo(clamp((t - 25.35 - (n - 1 - i) * 0.035) / 0.45));
+  const wordOut = (t) => (i) => inCubic(clamp((t - T(0.5) - i * 0.03) / 0.2));
+  const wordIn = (t) => (i, n) => 1 - easeOutExpo(clamp((t - T(25.35) - (n - 1 - i) * 0.035) / 0.45));
   // the tagline: drops out of its mask line, later rises back into it
   function drawTagline(c, t) {
     const B = S.wm, y = B.tagY, font = DM(B.tag, 400); c.font = font;
@@ -99,7 +105,7 @@
     c.save(); c.beginPath(); c.rect(0, 0, S.dw, y + 24); c.clip();
     c.fillStyle = MUTED; c.textBaseline = 'alphabetic'; c.textAlign = 'left'; const yb = window.kit.capMiddle(c, y) - y;
     [...s].forEach((ch, i) => {
-      const drop = t < 13 ? inCubic(clamp((t - 0.42 - i * 0.004) / 0.1)) : 1 - easeOutExpo(clamp((t - 25.9 - i * 0.006) / 0.3));
+      const drop = t < T(13) ? inCubic(clamp((t - T(0.42) - i * 0.004) / 0.1)) : 1 - easeOutExpo(clamp((t - T(25.9) - i * 0.006) / 0.3));
       if (drop < 0.999) c.fillText(ch, x, yb + y + drop * B.drop);
       x += measure(c, font, ch);
     });
@@ -171,14 +177,54 @@
 
   // ---------- the box builder: Fennick's real page, filling as the slider moves ----------
   // the slider's position, 0 … 1 (8.65–9.75); the box holds 12 × that many cans
-  const knobAt = (t) => (t < 8.65 ? 0 : t < 9.75 ? lerp(easeInOutCubic(clamp((t - 8.65) / 1.1)), clamp((t - 8.65) / 1.1), 0.3) : 1);
+  const K0 = T(8.65), K1 = K0 + 1.1; // the drag
+  const knobAt = (t) => (t < K0 ? 0 : t < K1 ? lerp(easeInOutCubic(clamp((t - K0) / 1.1)), clamp((t - K0) / 1.1), 0.3) : 1);
   const cansAt = (t) => Math.round(12 * knobAt(t));
-  let FULL = 9.75; for (let f = 8.65; f < 9.76; f += 1 / 240) if (cansAt(f) === 12) { FULL = f; break; } // the twelfth can lands
+  let FULL = K1; for (let f = K0; f < K1 + 0.01; f += 1 / 240) if (cansAt(f) === 12) { FULL = f; break; } // the twelfth can lands
+  // each can lands the app's way (cast/fennick/app.css, .slot.is-new .cut): it drops 28 px into its slot over 0.42 s on
+  // cubic-bezier(.2, .9, .3, 1.2), fading in; the stage's full outline eases in over 0.25 s. Never a capture swapped in
+  // one frame. LAND[i]: when can i appears; slots.json: each slot, measured from the captures (box-(i-1) to box-i)
+  const LAND = [0]; for (let i = 1; i <= 12; i++) { let at = K1; for (let f = K0; f < K1 + 0.01; f += 1 / 240) if (cansAt(f) >= i) { at = f; break; } LAND.push(at); }
+  function bezier(x1, y1, x2, y2) { // a CSS cubic-bezier, solved for x by bisection (deterministic)
+    const b = (a1, a2, u) => 3 * a1 * u * (1 - u) ** 2 + 3 * a2 * u * u * (1 - u) + u ** 3;
+    return (x) => { if (x <= 0) return 0; if (x >= 1) return 1; let lo = 0, hi = 1; for (let k = 0; k < 30; k++) { const m = (lo + hi) / 2; if (b(x1, x2, m) < x) lo = m; else hi = m; } return b(y1, y2, (lo + hi) / 2); };
+  }
+  const dropCurve = bezier(0.2, 0.9, 0.3, 1.2);
+  // the cans still landing at t, drawn over the capture of the current count (CSS px of the capture)
+  function landing(c, D, t, n) {
+    if (!D.slots) return;
+    const k = D.scale, ground = D.stageGround;
+    for (let i = Math.max(1, n - 6); i <= n; i++) {
+      const u = (t - LAND[i]) / 0.42; if (u >= 1) continue;
+      const [x, y, w, h] = D.slots[i - 1], e = dropCurve(clamp(u)), pad = 3;
+      c.save(); c.fillStyle = ground; c.fillRect(x - pad, y - pad, w + pad * 2, h + pad * 2); // its slot, empty
+      c.beginPath(); c.rect(x - pad, y - 32, w + pad * 2, h + 32 + pad); c.clip(); // room above for the drop
+      c.globalAlpha = clamp(e); c.drawImage(D.img[`box-${String(i).padStart(2, '0')}`], x * k, y * k, w * k, h * k, x, y - 28 * (1 - e), w, h);
+      c.restore();
+    }
+  }
+  // on the phone the full box's summary row ("Box ready" and its button) is 4 px taller than the row it replaces, so the
+  // page under it sits 4 px lower in box-12: it eases down over 0.3 s rather than jumping in one frame
+  function settleBelow(c, D, t) {
+    const u = (t - FULL) / 0.3; if (!D.row || u < 0 || u >= 1) return;
+    const k = D.scale, y0 = D.row.band[1], img = D.img['box-12'], h = img.height / k - y0, dy = -4 * (1 - easeOutExpo(u));
+    c.fillStyle = D.paper; c.fillRect(0, y0, D.w, h);
+    c.drawImage(img, 0, y0 * k, D.w * k, h * k, 0, y0 + dy, D.w, h);
+  }
+  // the full outline: box-11's stage edge over box-12's, fading out over 0.25 s (only the ring, so the cans aren't touched)
+  function fullRing(c, D, t) {
+    const u = (t - FULL) / 0.25; if (u < 0 || u >= 1) return;
+    const [x, y, w, h] = D.stage, k = D.scale, r = 6;
+    c.save(); c.beginPath(); c.rect(x - r, y - r, w + r * 2, h + r * 2); c.rect(x + r, y + r, w - r * 2, h - r * 2); c.clip('evenodd');
+    c.globalAlpha = 1 - u; c.drawImage(D.img['box-11'], (x - r) * k, (y - r) * k, (w + r * 2) * k, (h + r * 2) * k, x - r, y - r, w + r * 2, h + r * 2);
+    c.restore();
+  }
   // the page fills the frame (S.dw × S.dh): S.feed.crop is the part of the capture (CSS px) it shows
   function feedScreen(c, t) {
     const F = S.feed, D = SCR[F.set], s = S.dw / F.crop[2], img = D.img[`box-${String(cansAt(t)).padStart(2, '0')}`];
     c.fillStyle = PAPER; c.fillRect(-400, -400, S.dw + 800, S.dh + 800);
     c.save(); c.translate(-F.crop[0] * s, -F.crop[1] * s); c.scale(s / D.scale, s / D.scale); c.drawImage(img, 0, 0); c.restore();
+    c.save(); c.translate(-F.crop[0] * s, -F.crop[1] * s); c.scale(s, s); fullRing(c, D, t); landing(c, D, t, cansAt(t)); settleBelow(c, D, t); c.restore();
     if (D.row && t >= FULL && t < FULL + 0.8) { c.save(); c.translate(-F.crop[0] * s, -F.crop[1] * s); c.scale(s, s); boxReady(c, t - FULL, D); c.restore(); }
     if (D.row && press(t, C.click) > 0) { c.save(); c.translate(-F.crop[0] * s, -F.crop[1] * s); c.scale(s, s); pressedButton(c, D, 'box-12', D.row.btn, press(t, C.click)); c.restore(); }
   }
@@ -210,7 +256,8 @@
   // (15.95), and its lock screen slides down over the page (17.0): Thursday's "shipped" (17.65), the
   // clock rolls on to Saturday (18.8), "delivered" (19.3). A tap (20.85) turns that
   // notification into the delivered dot (20.9), which floods the frame (21.72).
-  const C = { click: 11.45, push1: 11.5, scroll: [12.75, 13.75], place: 14.25, push2: 14.6, pull: 15.95, lock: 17.0, n1: 17.65, roll: 18.8, n2: 19.3, tap: 20.85, dot: 20.9, tick: 21.25, ripple: 21.45 };
+  const C = Object.fromEntries(Object.entries({ click: 11.45, push1: 11.5, scroll: [12.75, 13.75], place: 14.25, push2: 14.6, pull: 15.95, lock: 17.0, n1: 17.65, roll: 18.8, n2: 19.3, tap: 20.85, dot: 20.9, tick: 21.25, ripple: 21.45 })
+    .map(([k, v]) => [k, Array.isArray(v) ? v.map(T) : T(v)])); // in the original's times, held as T says
   const pushAt = (t, t0) => ease(t, t0, t0 + 0.36, (q) => 1 - (1 - q) ** 3);
   // the screen: the whole frame until the pull-back (tall), then the phone's screen (S.ph)
   function screenRect(t) {
@@ -308,7 +355,7 @@
     if (above) { c.save(); roundRect(c, x, y, w, h, r); c.fillStyle = `rgba(250,248,244,${0.12 * above})`; c.fill(); c.restore(); }
     if (last && t >= C.tick) {
       // the check draws on, then shrinks away just before the dot floods the frame (21.72)
-      const p = clamp((t - C.tick) / 0.26), gone = inCubic(clamp((t - 21.6) / 0.12));
+      const p = clamp((t - C.tick) / 0.26), gone = inCubic(clamp((t - T(21.6)) / 0.12));
       if (gone < 1) { c.save(); sink(c, cx, cy, 1 - gone); checkOn(c, cx, cy, 22 * u, '#fff', easeOutExpo(p)); c.restore(); }
       // one ring leaves the dot's edge, thinning as it grows
       const q = clamp((t - C.ripple) / 0.45), e = easeOutExpo(q);
@@ -342,22 +389,22 @@
   // ---------- D: the box, arrived (22.1–24.45): an iris opens on it, holds, closes ----------
   function arrival(c, t) {
     c.fillStyle = INK; c.fillRect(0, 0, S.dw, S.dh);
-    if (t < 22.45) return;
-    const p = ease(t, 22.45, 24.25, (q) => q), z = 1 + 0.05 * p, w = S.dw * z, h = S.dh * z;
+    if (t < T(22.45)) return;
+    const p = ease(t, T(22.45), T(24.25), (q) => q), z = 1 + 0.05 * p, w = S.dw * z, h = S.dh * z;
     drawCover(c, S.dw > S.dh ? ART.arrivalWide : ART.arrival, S.cx - w / 2, S.cy - h / 2, w, h, [0.5, 0.6]);
-    const open = t < 23.9 ? easeOutExpo(clamp((t - 22.45) / 0.3)) : 1 - inCubic(clamp((t - 23.95) / 0.3));
+    const open = t < T(23.9) ? easeOutExpo(clamp((t - T(22.45)) / 0.3)) : 1 - inCubic(clamp((t - T(23.95)) / 0.3));
     iris(c, S.cx, S.cy, Math.hypot(S.dw, S.dh) / 2 + 4, open);
   }
 
   // ---------- the camera: [zoom, x, y] of the world point at the frame's centre ----------
   // epochs: A the canvas and grid, B the box builder, C checkout → order → phone, D the box arrived, E the close
-  const epoch = (t) => (t < 5.95 ? 'A' : t < C.push1 ? 'B' : t < 22.1 ? 'C' : t < 24.45 ? 'D' : 'E');
-  const CAMB = [[5.95, 1, 720, 720], [7.3, 1.3, 720, 880], [8.4, 1.15, 720, 813], [10.22, 1, 720, 720]]; // 813: the slider's frame stops at the feed's bottom edge (1440)
+  const epoch = (t) => (t < T(5.95) ? 'A' : t < C.push1 ? 'B' : t < T(22.1) ? 'C' : t < T(24.45) ? 'D' : 'E');
+  const CAMB = [[5.95, 1, 720, 720], [7.3, 1.3, 720, 880], [8.4, 1.15, 720, 813], [10.22, 1, 720, 720]].map(([t, ...r]) => [T(t), ...r]); // 813: the slider's frame stops at the feed's bottom edge (1440)
   const camTrack = (t, keys) => { const k = (i) => keys.map((r) => [r[0], i === 1 ? Math.log(r[1]) : r[i]]); return [Math.exp(track(t, k(1), 150, 25)), track(t, k(2), 150, 25), track(t, k(3), 150, 25)]; };
   function cam(t) {
     const e = epoch(t);
     if (e === 'A') {
-      const p = ease(t, 5.72, 5.95, (q) => (q < 0.5 ? 4 * q * q * q : 1 - (-2 * q + 2) ** 3 / 2)), B = S.big;
+      const p = ease(t, T(5.72), T(5.95), (q) => (q < 0.5 ? 4 * q * q * q : 1 - (-2 * q + 2) ** 3 / 2)), B = S.big;
       return [Math.exp(lerp(0, Math.log(S.dw / B.w), p)), lerp(S.cx, B.x, easeOutExpo(p)), lerp(S.cy, B.y, easeOutExpo(p))];
     }
     if (e === 'B') return camTrack(t, S.camB);
@@ -369,9 +416,9 @@
   const CUR = [
     [0, 1180, 1150], [1.55, 1180, 1150], [2.1, 752, 745], [2.95, 752, 745], [3.35, 1000, 1010], [3.9, 1000, 1010], [4.45, 1052, 740], [5.0, 1052, 740], [5.3, 972, 612], [5.9499, 972, 612],
     [5.95, 754, 755], [7.35, 754, 755], [7.82, 652, 1262], [8.05, 652, 1262], [8.22, 952, 1262], [8.34, 952, 1262], [8.6, 270, 1306], [8.65, 270, 1306],
-  ];
-  const CLICKS = [2.3, 5.55, 7.95, 8.3, C.click, C.place, C.tap];
-  const HOLDS = [[8.65, 10.0]]; // the slider's drag
+  ].map(([t, ...r]) => [T(t), ...r]);
+  const CLICKS = [T(2.3), T(5.55), T(7.95), T(8.3), C.click, C.place, C.tap];
+  const HOLDS = [[K0, T(10.0)]]; // the slider's drag
   const pressed = (t) => CLICKS.some((c) => t >= c - 0.04 && t < c + 0.08) || HOLDS.some(([a, b]) => t >= a && t < b);
   function cursorWorld(t) {
     const CUR = S.cur;
@@ -384,54 +431,54 @@
   // world → the frame, in design units (seek scales by S.k into pixels)
   const toScreen = ([x, y], [z, cx, cy]) => [(x - cx) * z + S.cx, (y - cy) * z + S.cy];
   // the knob (screen space, 8.65–10.0): the cursor holds it while it drags
-  function knobScreen(t) { const T = S.track; return toScreen([lerp(T.x0, T.x1, knobAt(t)), T.y], cam(t)); }
+  function knobScreen(t) { const TR = S.track; return toScreen([lerp(TR.x0, TR.x1, knobAt(t)), TR.y], cam(t)); }
   function cursorScreen(t) {
-    if (t >= 8.65 && t < 10.0) { const [x, y] = knobScreen(t); return [x + 6, y + 10]; }
+    if (t >= K0 && t < T(10.0)) { const [x, y] = knobScreen(t); return [x + 6, y + 10]; }
     return toScreen(cursorWorld(t), cam(t));
   }
-  const cursorShown = (t) => !(t >= 21.72 && t < 25.2);
+  const cursorShown = (t) => !(t >= T(21.72) && t < T(25.2));
 
   // ---------- the scenes ----------
-  const squareS = (t) => lerp(lerp(465, 1066, sp(t, 3.0, 220, 18)), 444, sp(t, 3.3, 240, 24));
-  const squareR = (t) => lerp(lerp(232.5, 90, sp(t, 3.0, 220, 18)), 40, sp(t, 3.3, 240, 24));
+  const squareS = (t) => lerp(lerp(465, 1066, sp(t, T(3.0), 220, 18)), 444, sp(t, T(3.3), 240, 24));
+  const squareR = (t) => lerp(lerp(232.5, 90, sp(t, T(3.0), 220, 18)), 40, sp(t, T(3.3), 240, 24));
   // A: the canvas: wordmark → dot → pill → iris → the yuzu can → grid → bento → zoom into the box builder
   function sceneOpen(c, t) {
     c.fillStyle = CANVAS; c.fillRect(-2000, -2000, 6000, 6000);
     const bg = c.createRadialGradient(S.cx, S.cy - 160, 0, S.cx, S.cy - 160, 700); bg.addColorStop(0, 'rgba(255,255,255,0.5)'); bg.addColorStop(1, 'rgba(255,255,255,0)'); c.fillStyle = bg; c.fillRect(0, 0, S.dw, S.dh);
     const L = wordmark(c);
-    if (t < 0.85) { drawWord(c, wordOut(t)); drawTagline(c, t); return; }
-    if (t < 1.2) { c.beginPath(); c.arc(L.dotCx, L.dotCy, L.dotD / 2, 0, Math.PI * 2); c.fillStyle = INK; c.fill(); return; }
-    if (t < 3.62) {
+    if (t < T(0.85)) { drawWord(c, wordOut(t)); drawTagline(c, t); return; }
+    if (t < T(1.2)) { c.beginPath(); c.arc(L.dotCx, L.dotCy, L.dotD / 2, 0, Math.PI * 2); c.fillStyle = INK; c.fill(); return; }
+    if (t < T(3.62)) {
       // the black shape: dot → pill → circle → square
-      let left = lerp(L.dotCx - L.dotD / 2, S.cx - 300, sp(t, 1.2, 420, 27)), right = lerp(L.dotCx + L.dotD / 2, S.cx + 300, sp(t, 1.22, 300, 25));
-      let hh = lerp(L.dotD, 192, sp(t, 1.22, 260, 22)), cy = lerp(L.dotCy, S.cy, sp(t, 1.2, 260, 24));
+      let left = lerp(L.dotCx - L.dotD / 2, S.cx - 300, sp(t, T(1.2), 420, 27)), right = lerp(L.dotCx + L.dotD / 2, S.cx + 300, sp(t, T(1.22), 300, 25));
+      let hh = lerp(L.dotD, 192, sp(t, T(1.22), 260, 22)), cy = lerp(L.dotCy, S.cy, sp(t, T(1.2), 260, 24));
       let w = right - left, cx = (left + right) / 2, r = hh / 2;
-      const q = sp(t, 2.32, 320, 22); w = lerp(w, 465, q); hh = lerp(hh, 465, q); r = hh / 2;
-      if (t >= 3.0) { w = squareS(t); hh = w; r = squareR(t); }
-      c.save(); sink(c, cx, cy, 1 - 0.05 * press(t, 2.3));
+      const q = sp(t, T(2.32), 320, 22); w = lerp(w, 465, q); hh = lerp(hh, 465, q); r = hh / 2;
+      if (t >= T(3.0)) { w = squareS(t); hh = w; r = squareR(t); }
+      c.save(); sink(c, cx, cy, 1 - 0.05 * press(t, T(2.3)));
       c.save(); c.shadowColor = 'rgba(0,0,0,0.16)'; c.shadowBlur = 50; c.shadowOffsetY = 20;
       roundRect(c, cx - w / 2, cy - hh / 2, w, hh, r); c.fillStyle = INK; c.fill(); c.restore();
       c.save(); roundRect(c, cx - w / 2, cy - hh / 2, w, hh, r); c.clip();
-      if (t < 2.47) { // the label rises out of the pill's lower edge, and leaves upward once it's clicked
-        const p = easeOutExpo(clamp((t - 1.85) / 0.3)), out = inCubic(clamp((t - 2.32) / 0.1));
+      if (t < T(2.47)) { // the label rises out of the pill's lower edge, and leaves upward once it's clicked
+        const p = easeOutExpo(clamp((t - T(1.85)) / 0.3)), out = inCubic(clamp((t - T(2.32)) / 0.1));
         if (p > 0 && out < 1) text(c, V.cta, cx, cy + 3 + (1 - p) * 90 - out * 90, DM(60, 600), '#fff', 'center');
-      } else { drawTile(c, 'yuzu', cx, cy, Math.max(w, hh), 0, t); iris(c, cx, cy, Math.max(w, hh) * 0.72, easeOutExpo(clamp((t - 2.47) / 0.28))); } // the can opens from the centre
+      } else { drawTile(c, 'yuzu', cx, cy, Math.max(w, hh), 0, t); iris(c, cx, cy, Math.max(w, hh) * 0.72, easeOutExpo(clamp((t - T(2.47)) / 0.28))); } // the can opens from the centre
       c.restore(); c.restore();
       return;
     }
     // the grid unfolds from behind the centre tile, then reflows into a bento
-    for (const i of t < 5.0 ? S.order[0] : S.order[1]) {
+    for (const i of t < T(5.0) ? S.order[0] : S.order[1]) {
       const [name, col, row] = GRID[i], gx = S.cx + (col - 1) * 321, gy = S.cy + (row - 1) * 321;
       const corner = col !== 1 && row !== 1;
-      const u = name === 'yuzu' ? 1 : sp(t, corner ? 3.78 : 3.62, 240, 22);
-      const um = sp(t, 3.62, 240, 22);
+      const u = name === 'yuzu' ? 1 : sp(t, corner ? T(3.78) : T(3.62), 240, 22);
+      const um = sp(t, T(3.62), 240, 22);
       let x = lerp(S.cx, gx, u), y = lerp(S.cy, gy, u), s = name === 'yuzu' ? lerp(squareS(t), 304, um) : lerp(250, 304, u);
-      const v = sp(t, 5.0 + (name === 'feed' ? S.feedDelay : 0.03 + 0.012 * i), 220, 21);
+      const v = sp(t, T(5.0) + (name === 'feed' ? S.feedDelay : 0.03 + 0.012 * i), 220, 21);
       const B = name === 'feed' ? S.big : null, [bx, by] = B ? [B.x, B.y] : S.bento[name];
       x = lerp(x, bx, v); y = lerp(y, by, v);
-      const pk = name === 'feed' ? 1 - 0.035 * press(t, 5.55) : 1, sw = lerp(s, B ? B.w : 224, v) * pk, sh = lerp(s, B ? B.h : 224, v) * pk;
+      const pk = name === 'feed' ? 1 - 0.035 * press(t, T(5.55)) : 1, sw = lerp(s, B ? B.w : 224, v) * pk, sh = lerp(s, B ? B.h : 224, v) * pk;
       let r = name === 'yuzu' ? lerp(squareR(t), sw * 0.085, um) : Math.min(sw, sh) * 0.085;
-      if (name === 'feed') r *= 1 - ease(t, 5.72, 5.95);
+      if (name === 'feed') r *= 1 - ease(t, T(5.72), T(5.95));
       c.save(); c.shadowColor = 'rgba(0,0,0,0.14)'; c.shadowBlur = 24; c.shadowOffsetY = 10; roundRect(c, x - sw / 2, y - sh / 2, sw, sh, r); c.fillStyle = INK; c.fill(); c.restore();
       if (name === 'feed' && S.name !== '1:1') feedTile(c, x, y, sw, sh, r, t); else drawTile(c, name, x, y, sw, r, t);
     }
@@ -441,11 +488,11 @@
     feedScreen(c, t);
     // the glass word pops in letter by letter, then melts into a droplet
     const word = V.verb + '.', size = Math.min(S.word[1], (S.word[0] * 100) / Math.max(1, measure(c, BR(100), word)));
-    const drop = S.bar, T = S.track;
-    if (t < 7.45) {
+    const drop = S.bar, TR = S.track;
+    if (t < T(7.45)) {
       c.font = BR(size); const tw = c.measureText(word).width; let x = S.cx - tw / 2;
       [...word].forEach((ch, i) => {
-        c.font = BR(size); const w = c.measureText(ch).width, p = sp(t, 6.25 + i * 0.07, 320, 17), m = inCubic(clamp((t - 7.1 - i * 0.02) / 0.28));
+        c.font = BR(size); const w = c.measureText(ch).width, p = sp(t, T(6.25) + i * 0.07, 320, 17), m = inCubic(clamp((t - T(7.1) - i * 0.02) / 0.28));
         const lx = lerp(x + w / 2, drop[0], m), ly = lerp(S.wordY, drop[1], m), s = p * (1 - m * 0.9);
         if (s > 0.02) {
           c.save(); c.translate(lx, ly); c.scale(s, s); c.font = BR(size); c.textAlign = 'center'; c.textBaseline = 'alphabetic'; c.translate(0, window.kit.capMiddle(c, 0));
@@ -457,12 +504,12 @@
       });
     }
     // droplet → toolbar → slider panel → collapses into the knob
-    if (t >= 7.28 && t < 10.5) {
-      const d = sp(t, 7.28, 300, 20), st = sp(t, 7.42, 230, 19), pn = sp(t, 8.4, 240, 21), gone = sp(t, 10.22, 260, 24);
+    if (t >= T(7.28) && t < T(10.5)) {
+      const d = sp(t, T(7.28), 300, 20), st = sp(t, T(7.42), 230, 19), pn = sp(t, T(8.4), 240, 21), gone = sp(t, T(10.22), 260, 24);
       let w = lerp(lerp(0, 90, d), 683, st), h = lerp(lerp(0, 90, d), 141, st);
       w = lerp(w, 1081, pn); h = lerp(h, 237, pn);
       // on the way out the panel shrinks toward the knob at the right end
-      const wx = lerp(w, 72, gone), hx = lerp(h, 72, gone), cx = lerp(drop[0], T.x1, gone), cy = lerp(drop[1], T.y, gone);
+      const wx = lerp(w, 72, gone), hx = lerp(h, 72, gone), cx = lerp(drop[0], TR.x1, gone), cy = lerp(drop[1], TR.y, gone);
       if (gone < 0.97) {
         const rr = Math.min(hx / 2, lerp(70, 76, pn));
         glass(c, () => roundRect(c, cx - wx / 2, cy - hx / 2, wx, hx, rr), 1, 0.8); // dark enough that the page under it stays quiet
@@ -471,9 +518,9 @@
         if (tb > 0.01) { // toolbar icons
           c.globalAlpha = tb;
           ['open', 'bookmark', 'info', 'filter'].forEach((k, i) => {
-            const ix = drop[0] + (i - 1.5) * 150, pr = k === 'bookmark' ? press(t, 7.95) : k === 'filter' ? press(t, 8.3) : 0;
+            const ix = drop[0] + (i - 1.5) * 150, pr = k === 'bookmark' ? press(t, T(7.95)) : k === 'filter' ? press(t, T(8.3)) : 0;
             if (pr > 0) { c.beginPath(); c.arc(ix, drop[1], 52, 0, Math.PI * 2); c.fillStyle = `rgba(255,255,255,${0.2 * pr})`; c.fill(); }
-            c.save(); sink(c, ix, drop[1], 1 - 0.1 * pr); icon(c, k, ix, drop[1], 46, '#fff', k === 'bookmark' && t >= 7.95); c.restore();
+            c.save(); sink(c, ix, drop[1], 1 - 0.1 * pr); icon(c, k, ix, drop[1], 46, '#fff', k === 'bookmark' && t >= T(7.95)); c.restore();
           });
           c.globalAlpha = 1;
         }
@@ -483,11 +530,11 @@
           boxIcon(c, drop[0] - 438, drop[1] - 54, 36, '#fff');
           text(c, 'Fill with an even mix', drop[0] - 402, drop[1] - 52, DM(37, 500), '#fff');
           text(c, `${cansAt(t)} of 12`, drop[0] + 456, drop[1] - 52, DM(37, 600), '#fff', 'right');
-          const p = knobAt(t), kx = lerp(T.x0, T.x1, p);
-          roundRect(c, T.x0, T.y - 4, T.x1 - T.x0, 8, 4); c.fillStyle = 'rgba(255,255,255,0.28)'; c.fill();
-          roundRect(c, T.x0, T.y - 4, Math.max(8, kx - T.x0), 8, 4); c.fillStyle = '#fff'; c.fill();
-          const held = easeOutExpo(clamp((t - 8.58) / 0.1)) * (1 - easeInOutCubic(clamp((t - 9.98) / 0.2))), kr = 36 * (1 + 0.18 * held); // the knob swells while it's held
-          if (t < 10.2) { glass(c, () => { c.beginPath(); c.arc(kx, T.y, kr, 0, Math.PI * 2); }); c.beginPath(); c.arc(kx, T.y, 12, 0, Math.PI * 2); c.fillStyle = '#fff'; c.fill(); }
+          const p = knobAt(t), kx = lerp(TR.x0, TR.x1, p);
+          roundRect(c, TR.x0, TR.y - 4, TR.x1 - TR.x0, 8, 4); c.fillStyle = 'rgba(255,255,255,0.28)'; c.fill();
+          roundRect(c, TR.x0, TR.y - 4, Math.max(8, kx - TR.x0), 8, 4); c.fillStyle = '#fff'; c.fill();
+          const held = easeOutExpo(clamp((t - (K0 - 0.07)) / 0.1)) * (1 - easeInOutCubic(clamp((t - T(9.98)) / 0.2))), kr = 36 * (1 + 0.18 * held); // the knob swells while it's held
+          if (t < T(10.2)) { glass(c, () => { c.beginPath(); c.arc(kx, TR.y, kr, 0, Math.PI * 2); }); c.beginPath(); c.arc(kx, TR.y, 12, 0, Math.PI * 2); c.fillStyle = '#fff'; c.fill(); }
           c.globalAlpha = 1;
         }
         c.restore();
@@ -567,16 +614,15 @@
     L.track = { x0: L.bar[0] - 456, x1: L.bar[0] + 456, y: L.bar[1] + 48 };
     // zoom toward the toolbar, then the slider
     // (the top of the frame stays above the page's headline; tall's zoom stays inside the page's side margins)
-    L.camB = wide ? [[5.95, 1, cx, cy], [7.3, 1.08, cx, 640], [8.4, 1.03, cx, 660], [10.22, 1, cx, cy]]
-      : [[5.95, 1, cx, cy], [7.3, 1.08, cx, 1300], [8.4, 1.05, cx, 1290], [10.22, 1, cx, cy]];
+    L.camB = (wide ? [[5.95, 1, cx, cy], [7.3, 1.08, cx, 640], [8.4, 1.03, cx, 660], [10.22, 1, cx, cy]]
+      : [[5.95, 1, cx, cy], [7.3, 1.08, cx, 1300], [8.4, 1.05, cx, 1290], [10.22, 1, cx, cy]]).map(([t, ...r]) => [T(t), ...r]);
     stage(L);
     // the cursor, from the boxes it works on
     const rest = [dw - 260, dh - 290], zA = dw / bw, tap = wide ? [0, 97] : [0, 266]; // tap: where it clicks the box builder's tile
     L.cur = [
       [0, ...rest], [1.55, ...rest], [2.1, cx + 32, cy + 25], [2.95, cx + 32, cy + 25], [3.35, cx + 280, cy + 290], [3.9, cx + 280, cy + 290], [4.45, cx + 321 + 11, cy + 20], [5.0, cx + 321 + 11, cy + 20], [5.3, cx + tap[0], cy + tap[1]], [5.9499, cx + tap[0], cy + tap[1]],
       [5.95, cx + tap[0] * zA, cy + tap[1] * zA], [7.35, cx + tap[0] * zA, cy + tap[1] * zA], [7.82, L.bar[0] - 68, L.bar[1] + 12], [8.05, L.bar[0] - 68, L.bar[1] + 12], [8.22, L.bar[0] + 232, L.bar[1] + 12], [8.34, L.bar[0] + 232, L.bar[1] + 12], [8.6, L.track.x0 + 6, L.track.y + 8], [8.65, L.track.x0 + 6, L.track.y + 8],
-      ...L.curC,
-    ];
+    ].map(([t, ...r]) => [T(t), ...r]).concat(L.curC);
     return L;
   }
 
@@ -603,7 +649,7 @@
     L.curC = [
       [10.0, ...knob], [10.45, ...knob], [10.95, ...go], [11.65, ...go], [12.2, dw - 170, go[1] + 380], [13.55, dw - 170, go[1] + 380], [13.95, ...place], [14.55, ...place], [15.05, ...rest],
       [20.25, ...rest], [20.65, ...tapAt], [22.0999, ...tapAt], [22.1, ...loop], [27, ...loop],
-    ];
+    ].map(([t, ...r]) => [T(t), ...r]);
   }
 
   // ---------- the frame ----------
@@ -624,8 +670,8 @@
     g.restore();
     g.setTransform(K, 0, 0, K, 0, 0); // the frame in design units from here on
     // C → D: the delivered dot floods the frame
-    if (t >= 21.72 && t < 22.1) {
-      const [px, py] = toScreen([S.flood[0], S.flood[1]], cam(21.72)), r = lerp(S.flood[2], S.flood[3], ease(t, 21.72, 21.92, (q) => q * q));
+    if (t >= T(21.72) && t < T(22.1)) {
+      const [px, py] = toScreen([S.flood[0], S.flood[1]], cam(T(21.72))), r = lerp(S.flood[2], S.flood[3], ease(t, T(21.72), T(21.72) + 0.2, (q) => q * q));
       g.beginPath(); g.arc(px, py, r, 0, Math.PI * 2); g.fillStyle = INK; g.fill();
     }
     if (e === 'E') closeShape(t);
@@ -637,16 +683,16 @@
     const L = wordmark(g);
     g.fillStyle = CANVAS; g.fillRect(0, 0, S.dw, S.dh);
     const bg = g.createRadialGradient(S.cx, S.cy - 160, 0, S.cx, S.cy - 160, 700); bg.addColorStop(0, 'rgba(255,255,255,0.5)'); bg.addColorStop(1, 'rgba(255,255,255,0)'); g.fillStyle = bg; g.fillRect(0, 0, S.dw, S.dh);
-    if (t < 25.35) {
+    if (t < T(25.35)) {
       // size in log space, so the shrink reads even from the full frame down to the dot; fast out, soft landing
-      const p = ease(t, 24.55, 25.35, (q) => (q < 0.4 ? 0.5 * (q / 0.4) ** 2 : 1 - 0.5 * ((1 - q) / 0.6) ** 2.4));
+      const p = ease(t, T(24.55), T(25.35), (q) => (q < 0.4 ? 0.5 * (q / 0.4) ** 2 : 1 - 0.5 * ((1 - q) / 0.6) ** 2.4));
       const w = Math.exp(lerp(Math.log(S.dw + 40), Math.log(L.dotD), p)), h = Math.exp(lerp(Math.log(S.dh + 40), Math.log(L.dotD), p));
       const cx = lerp(S.cx, L.dotCx, p), cy = lerp(S.cy, L.dotCy, p), r = Math.min(w, h) / 2 * clamp(p * 1.5);
       roundRect(g, cx - w / 2, cy - h / 2, w, h, r); g.fillStyle = INK; g.fill();
       return;
     }
     drawWord(g, wordIn(t));
-    if (t >= 25.9) drawTagline(g, t);
+    if (t >= T(25.9)) drawTagline(g, t);
   }
   function drawCursor(x, y, s) {
     g.save(); g.translate(x, y); g.scale(s, s);
@@ -664,6 +710,7 @@
       ...Object.entries(art).map(async ([k, f]) => { if (!ART[k]) ART[k] = await loadImage(`assets/art/${f}`); }),
       ...Object.values(SCR).flatMap((D) => [...SHOTS, ...(D.extra || [])].map(async (n) => { if (!D.img[n]) D.img[n] = await loadImage(`${D.dir}/${n}@${D.scale}.webp`); })),
     ]);
+    await Promise.all(Object.values(SCR).map(async (D) => { if (!D.slots) D.slots = (await (await fetch(`${D.dir}/slots.json`)).json()).slots; }));
     await document.fonts.ready;
     WM = null;
     if (!prepare.done) { sample(); paintPaper(); prepare.done = true; }
@@ -676,6 +723,10 @@
     const [, P] = helper(1, 1), D = SCR.m, [bx, by, , bh] = D.checkout.place;
     P.drawImage(D.img.checkout, Math.round((bx + bh) * D.scale), Math.round((by + 6) * D.scale), 1, 1, 0, 0, 1, 1);
     const d = P.getImageData(0, 0, 1, 1).data; D.ink = `rgb(${d[0]},${d[1]},${d[2]})`;
+    for (const S of Object.values(SCR)) { // the stage's own ground, just inside its corner, behind a landing can
+      P.clearRect(0, 0, 1, 1); P.drawImage(S.img['box-00'], Math.round((S.stage[0] + 14) * S.scale), Math.round((S.stage[1] + S.stage[3] - 14) * S.scale), 1, 1, 0, 0, 1, 1);
+      const q = P.getImageData(0, 0, 1, 1).data; S.stageGround = `rgb(${q[0]},${q[1]},${q[2]})`;
+    }
     const img = ART.wallpaper, [bc, B] = helper(img.width >> 2, img.height >> 2);
     B.filter = 'blur(10px)'; B.drawImage(img, -8, -8, bc.width + 16, bc.height + 16); ART.wallBlur = bc;
   }
@@ -712,22 +763,22 @@
     for (const [a, b] of HOLDS) out.push({ t: a, type: 'tap', gain: 0.6 }, { t: b, type: 'tap', gain: 0.45 });
     const pop = (t, gain = 0.42) => out.push({ t, type: 'pop', gain });
     const swish = (t, kind, travel, gain = 0.32) => out.push({ t, type: 'swish', gain, motion: { kind, travel } });
-    swish(0.5, 'container', 0.4, 0.3); // the letters drop away from the period
-    swish(1.2, 'container', 0.5); pop(1.85, 0.4); // the pill, its label
-    pop(2.47); swish(3.0, 'container', 0.5); // the iris opens on the can; the tile grows
-    swish(3.62, 'container', 0.6); pop(3.78, 0.4); // the grid unfolds
-    swish(5.0, 'container', 0.5); swish(5.72, 'camera', 0.8, 0.36); // the bento; the zoom into the box builder
-    for (let i = 0; i < (V.verb + '.').length; i++) pop(6.25 + i * 0.07, 0.4);
-    swish(7.1, 'container', 0.35, 0.3); pop(7.42, 0.4); swish(8.4, 'container', 0.4, 0.3); // droplet, toolbar, slider
-    let n = 0; for (let f = 8.65; f < 9.8; f += 1 / 60) { const m = cansAt(f); if (m > n) { out.push({ t: f, type: 'tick', gain: 0.45 }); n = m; } }
+    swish(T(0.5), 'container', 0.4, 0.3); // the letters drop away from the period
+    swish(T(1.2), 'container', 0.5); pop(T(1.85), 0.4); // the pill, its label
+    pop(T(2.47)); swish(T(3.0), 'container', 0.5); // the iris opens on the can; the tile grows
+    swish(T(3.62), 'container', 0.6); pop(T(3.78), 0.4); // the grid unfolds
+    swish(T(5.0), 'container', 0.5); swish(T(5.72), 'camera', 0.8, 0.36); // the bento; the zoom into the box builder
+    for (let i = 0; i < (V.verb + '.').length; i++) pop(T(6.25) + i * 0.07, 0.4);
+    swish(T(7.1), 'container', 0.35, 0.3); pop(T(7.42), 0.4); swish(T(8.4), 'container', 0.4, 0.3); // droplet, toolbar, slider
+    let n = 0; for (let f = K0; f < K0 + 1.15; f += 1 / 60) { const m = cansAt(f); if (m > n) { out.push({ t: f, type: 'tick', gain: 0.45 }); n = m; } }
     pop(FULL + 0.1, 0.4); pop(FULL + 0.2, 0.42); // "Box ready", the Checkout button opens
     swish(C.push1, 'container', 0.5); swish(C.scroll[0], 'camera', 0.4, 0.26); // the checkout pushes in, scrolls
     pop(C.place + 0.1, 0.36); swish(C.push2, 'container', 0.5); // the spinner; the order page
     swish(C.pull, 'camera', 0.7, 0.34); swish(C.lock, 'container', 0.5, 0.3); // the pull-back into the phone; the lock screen comes down
     pop(C.n1, 0.42); swish(C.roll, 'container', 0.3, 0.24); pop(C.n2, 0.45); // shipped; days pass; delivered
     swish(C.dot, 'container', 0.4, 0.3); pop(C.tick, 0.45); // the delivered dot
-    swish(21.72, 'container', 0.8); pop(22.47, 0.4); swish(23.95, 'container', 0.5, 0.3); // flood; the iris on the box, and closing
-    swish(24.55, 'container', 0.7); pop(25.38, 0.45); pop(25.92, 0.4); // the pill, the wordmark, the tagline
+    swish(T(21.72), 'container', 0.8); pop(T(22.47), 0.4); swish(T(23.95), 'container', 0.5, 0.3); // flood; the iris on the box, and closing
+    swish(T(24.55), 'container', 0.7); pop(T(25.38), 0.45); pop(T(25.92), 0.4); // the pill, the wordmark, the tagline
     return out.sort((a, b) => a.t - b.t);
   }
   // the bed: 120 BPM (a bar is 2 s); D major, a quiet start, the beat in from bar 1.5, a breakdown on the wall, the beat back for the close
@@ -735,17 +786,17 @@
     bpm: 120, duration: DURATION, root: 50, // D3, upward-voiced major chords
     chords: [[0, 4, 7], [7, 11, 14], [9, 12, 16], [5, 9, 12]],
     sections: [
-      { from: 0, to: 1.5, pad: 0.7, hats: 0.3 },
-      { from: 1.5, to: 11, kick: 0.75, hats: 0.6, bass: 0.6, pad: 0.55 },
-      { from: 11, to: 12, pad: 0.75, hats: 0.3 },
-      { from: 12, to: 13, kick: 0.6, hats: 0.45, bass: 0.5, pad: 0.6 },
-      { from: 13, to: 13.5, pad: 0.7 },
+      { from: 0, to: T(3) / 2, pad: 0.7, hats: 0.3 },
+      { from: T(3) / 2, to: T(22) / 2, kick: 0.75, hats: 0.6, bass: 0.6, pad: 0.55 },
+      { from: T(22) / 2, to: T(24) / 2, pad: 0.75, hats: 0.3 },
+      { from: T(24) / 2, to: T(26) / 2, kick: 0.6, hats: 0.45, bass: 0.5, pad: 0.6 },
+      { from: T(26) / 2, to: DURATION / 2, pad: 0.7 },
     ],
   };
-  const STATES = [[0, 'Wordmark'], [0.5, 'Letters drop'], [1.2, 'Pill'], [2.3, 'Iris'], [3.0, 'Tile'], [3.62, 'Grid'], [5.0, 'Bento'], [5.72, 'Zoom'], [6.2, 'Glass word'], [7.3, 'Toolbar'], [8.4, 'Slider'], [9.75, 'Box ready'], [11.5, 'Checkout'], [14.05, 'Start my box'], [14.45, 'Order'], [15.85, 'Phone'], [17.0, 'Lock screen'], [18.75, 'Days pass'], [19.25, 'Delivered'], [20.9, 'Dot'], [21.72, 'Flood'], [22.45, 'The box, arrived'], [24.25, 'Black'], [24.55, 'Into the period'], [25.35, 'Wordmark']];
+  const STATES = [[0, 'Wordmark'], [0.5, 'Letters drop'], [1.2, 'Pill'], [2.3, 'Iris'], [3.0, 'Tile'], [3.62, 'Grid'], [5.0, 'Bento'], [5.72, 'Zoom'], [6.2, 'Glass word'], [7.3, 'Toolbar'], [8.4, 'Slider'], [9.75, 'Box ready'], [11.5, 'Checkout'], [14.05, 'Start my box'], [14.45, 'Order'], [15.85, 'Phone'], [17.0, 'Lock screen'], [18.75, 'Days pass'], [19.25, 'Delivered'], [20.9, 'Dot'], [21.72, 'Flood'], [22.45, 'The box, arrived'], [24.25, 'Black'], [24.55, 'Into the period'], [25.35, 'Wordmark']].map(([t, n]) => [T(t), n]);
   // the film ships tall; SHAPES still lays out square and wide, not yet reviewed with this story
   window.template = { fps: FPS, duration: DURATION, sizes: { '9:16': SHAPES['9:16'] }, width: 1080, height: 1920, defaults: () => ({ size: '9:16', ...DEFAULTS }), fields: FIELDS, states: STATES, prepare, seek: (t, values) => seek(t, values), cues, music,
-    keyTimes: [0.3, 0.7, 1.0, 2.2, 2.9, 3.4, 4.3, 5.4, 5.85, 6.6, 7.9, 9.2, 10.1, 10.9, 11.7, 12.5, 13.6, 14.3, 15.2, 16.5, 17.4, 18.3, 19.0, 19.9, 20.95, 21.4, 21.9, 23.2, 24.1, 24.8, 25.45, 26.5] };
+    keyTimes: [0.3, 0.7, 1.0, 2.2, 2.9, 3.4, 4.3, 5.4, 5.85, 6.6, 7.9, 9.2, 10.1, 10.9, 11.7, 12.5, 13.6, 14.3, 15.2, 16.5, 17.4, 18.3, 19.0, 19.9, 20.95, 21.4, 21.9, 23.2, 24.1, 24.8, 25.45, 26.5].map(T) };
   const q = new URLSearchParams(location.search);
   if (window.parent === window && !q.has('render')) { const size = q.get('size') || '9:16'; prepare({ size }).then(() => { const t0 = performance.now(); const loop = () => { seek(((performance.now() - t0) / 1000) % DURATION, { size }); requestAnimationFrame(loop); }; loop(); }); }
 })();
